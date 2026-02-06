@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>Stack Smash Tournament</title>
+    
+    <!-- Three.js for 3D Graphics -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+    
+    <!-- Monetag Ad Script (Zone 10572084) -->
+    <script src="https://alwingulla.com/88/tag.min.js" data-zone="10572084" async="async" data-cfasync="false"></script>
+
+    <style>
+        :root { --primary: #00ff88; --danger: #ff0055; --dark: #121212; --panel: #1e1e1e; --gold: #ffd700; }
+        body { margin: 0; overflow: hidden; background: var(--dark); font-family: 'Segoe UI', sans-serif; user-select: none; -webkit-tap-highlight-color: transparent; }
+        
+        /* UI Layers */
+        #game-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
+        #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; pointer-events: none; display: flex; flex-direction: column; justify-content: space-between; }
+        
+        .pointer-events-auto { pointer-events: auto; }
+        
+        /* Header */
+        .header { padding: 15px; display: flex; justify-content: space-between; color: white; text-shadow: 0 2px 4px rgba(0,0,0,0.8); }
+        .ticket-badge { background: rgba(0,0,0,0.6); padding: 5px 12px; border-radius: 20px; border: 1px solid var(--primary); display: flex; align-items: center; gap: 5px; font-weight: bold; }
+        .ticket-icon { color: var(--primary); }
+
+        /* Screens */
+        .screen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); backdrop-filter: blur(5px); display: none; flex-direction: column; align-items: center; justify-content: center; pointer-events: auto; text-align: center; color: white; }
+        .screen.active { display: flex; }
+        
+        h1 { font-size: 32px; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 2px; background: linear-gradient(45deg, #00ff88, #00b8ff); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        p { color: #ccc; margin-bottom: 20px; max-width: 80%; line-height: 1.5; }
+        
+        button { background: var(--primary); color: #000; border: none; padding: 15px 40px; font-size: 18px; font-weight: bold; border-radius: 30px; cursor: pointer; transition: transform 0.1s; box-shadow: 0 0 15px rgba(0, 255, 136, 0.4); text-transform: uppercase; margin: 5px; }
+        button:active { transform: scale(0.95); }
+        button.secondary { background: transparent; border: 2px solid white; color: white; margin-top: 10px; box-shadow: none; }
+        
+        button.reward-btn { background: var(--gold); box-shadow: 0 0 15px rgba(255, 215, 0, 0.4); font-size: 14px; padding: 10px 20px; display: flex; align-items: center; gap: 8px; }
+
+        /* Tournament List */
+        .tourney-list { width: 90%; max-height: 60%; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding-bottom: 20px; }
+        .tourney-card { background: var(--panel); padding: 15px; border-radius: 12px; border-left: 4px solid var(--primary); text-align: left; position: relative; }
+        .tourney-card h3 { margin: 0 0 5px 0; font-size: 18px; }
+        .tourney-meta { font-size: 12px; color: #888; display: flex; justify-content: space-between; margin-bottom: 10px; }
+        .tourney-btn { width: 100%; padding: 10px; font-size: 14px; }
+        .tourney-card.locked { opacity: 0.6; border-left-color: var(--danger); }
+        
+        /* Forms */
+        .form-group { width: 80%; margin-bottom: 15px; text-align: left; }
+        label { display: block; margin-bottom: 5px; font-size: 12px; color: #aaa; }
+        input { width: 100%; padding: 12px; background: #333; border: 1px solid #444; color: white; border-radius: 8px; box-sizing: border-box; outline: none; }
+        input:focus { border-color: var(--primary); }
+
+        /* Game UI */
+        #game-ui { display: none; }
+        .level-indicator { position: absolute; top: 20px; width: 100%; text-align: center; color: white; font-size: 24px; font-weight: bold; pointer-events: none; text-shadow: 0 2px 4px black; }
+        .progress-bar { position: absolute; top: 0; left: 0; height: 5px; background: var(--primary); width: 0%; transition: width 0.1s; }
+
+        /* Disclaimer */
+        .disclaimer { font-size: 10px; color: #555; position: absolute; bottom: 10px; width: 100%; text-align: center; padding: 0 20px; box-sizing: border-box; }
+        
+        /* Toast */
+        #toast { position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%); background: #333; color: white; padding: 10px 20px; border-radius: 20px; font-size: 14px; opacity: 0; transition: opacity 0.3s; pointer-events: none; z-index: 100; border: 1px solid #555; }
+    </style>
+</head>
+<body>
+
+    <!-- 3D Game Canvas -->
+    <div id="game-container"></div>
+
+    <!-- UI Overlay -->
+    <div id="ui-layer">
+        <div class="header">
+            <div class="ticket-badge">
+                <span class="ticket-icon">🎫</span>
+                <span id="ticket-display">0</span>
+            </div>
+            <div class="ticket-badge" style="border-color: #fff">
+                <span>⏱️</span>
+                <span id="playtime-display">00:00</span>
+            </div>
+        </div>
+
+        <!-- In-Game Elements -->
+        <div id="game-ui">
+            <div class="progress-bar" id="level-progress"></div>
+            <div class="level-indicator">Level <span id="level-num">1</span></div>
+        </div>
+
+        <!-- Start Screen -->
+        <div id="start-screen" class="screen active">
+            <h1>Stack Smash</h1>
+            <p>Hold to smash. Avoid black platforms.<br />Play to earn tickets.</p>
+            
+            <button onclick="Game.start()">Play Now</button>
+            <button class="secondary" onclick="App.openTournaments()">Tournaments</button>
+            
+            <!-- REWARDED AD BUTTON -->
+            <button class="reward-btn" onclick="App.watchRewardedAd()">
+                <span>📺</span> Get +50 Free Tickets
+            </button>
+
+            <div class="disclaimer">Tickets are in-game points only. No real money gambling.</div>
+        </div>
+
+        <!-- Game Over Screen -->
+        <div id="game-over-screen" class="screen">
+            <h1 id="go-title" style="color: var(--danger)">CRASHED!</h1>
+            <p>You hit a black platform.</p>
+            <button onclick="Game.restart()">Try Again</button>
+            <button class="secondary" onclick="App.showHome()">Main Menu</button>
+        </div>
+
+        <!-- Tournament Screen -->
+        <div id="tournament-screen" class="screen" style="justify-content: flex-start; padding-top: 80px;">
+            <h2 style="margin-top:0">Live Tournaments</h2>
+            <div id="tourney-list-container" class="tourney-list">
+                <p>Loading tournaments...</p>
+            </div>
+            <button class="secondary" style="width: 50%; padding: 10px;" onclick="App.showHome()">Back</button>
+        </div>
+
+        <!-- Join Form Screen -->
+        <div id="join-screen" class="screen">
+            <h2>Join Tournament</h2>
+            <p id="join-tourney-name">Tournament</p>
+            <div class="form-group">
+                <label>In-Game Name (IGN)</label>
+                <input type="text" id="ign-input" placeholder="e.g. Slayer007" />
+            </div>
+            <div class="form-group">
+                <label>Game ID (UID)</label>
+                <input type="number" id="uid-input" placeholder="e.g. 5839201" />
+            </div>
+            <p style="font-size: 12px; color: var(--primary)">Cost: <span id="join-cost">200</span> Tickets</p>
+            <button onclick="App.submitEntry()">Confirm Entry</button>
+            <button class="secondary" onclick="document.getElementById('join-screen').classList.remove('active')">Cancel</button>
+        </div>
+    </div>
+
+    <div id="toast"></div>
+
+    <script>
+    /*<![CDATA[*/
+        // ==========================================
+        // 1. FIREBASE CONFIG
+        // ==========================================
+        const firebaseConfig = {
+          apiKey: "AIzaSyDCmXCdvLV8--2ZXYmCpAgLR3cogj0cGG8",
+          authDomain: "freegm-4601f.firebaseapp.com",
+          databaseURL: "https://freegm-4601f-default-rtdb.asia-southeast1.firebasedatabase.app",
+          projectId: "freegm-4601f",
+          storageBucket: "freegm-4601f.firebasestorage.app",
+          messagingSenderId: "30234171811",
+          appId: "1:30234171811:web:70a6c3cfd365a874cfa216"
+        };
+
+        let db, auth, currentUser;
+        try {
+            firebase.initializeApp(firebaseConfig);
+            db = firebase.firestore();
+            auth = firebase.auth();
+        } catch (e) {
+            console.error("Firebase Init Error:", e);
+        }
+
+        // ==========================================
+        // 2. MONETAG AD SYSTEM (TELEGRAM SAFE MODE)
+        // ==========================================
+        const Ads = {
+            run: function(type) {
+                return new Promise((resolve, reject) => {
+                    if (typeof show_10572084 === 'function') {
+                        if (type === 'reward') {
+                            // Rewarded Video (User Initiated)
+                            show_10572084().then(resolve).catch(reject);
+                        } else if (type === 'interstitial') {
+                            // In-App Interstitial (SAFE MODE CONFIG)
+                            show_10572084({
+                                type: 'inApp',
+                                inAppSettings: {
+                                    frequency: 1,    // Max 1 ad per session limit
+                                    capping: 1,      // 1 ad per Hour (Strict safety)
+                                    interval: 60,    // 60 seconds minimum interval
+                                    timeout: 5,
+                                    everyPage: false
+                                }
+                            }).then(resolve).catch(resolve);
+                        }
+                    } else if (typeof show_88_tag === 'function') {
+                        show_88_tag().then(resolve).catch(reject);
+                    } else {
+                        console.warn("Ad script not loaded (AdBlock?)");
+                        reject("AdBlock");
+                    }
+                });
+            }
+        };
+
+        // ==========================================
+        // 3. APP LOGIC
+        // ==========================================
+        const App = {
+            state: { tickets: 0, totalPlaytime: 0, isGameActive: false },
+            
+            init: async function() {
+                if (auth) {
+                    auth.onAuthStateChanged(async (user) => {
+                        if (user) {
+                            currentUser = user;
+                            await this.loadUserData();
+                        } else {
+                            await auth.signInAnonymously();
+                        }
+                    });
+                } else {
+                    this.state.tickets = parseInt(localStorage.getItem('tickets') || '500'); 
+                    this.updateUI();
+                }
+
+                setInterval(() => {
+                    if (this.state.isGameActive && !document.hidden) {
+                        this.state.totalPlaytime++;
+                        if (this.state.totalPlaytime % 60 === 0) {
+                            this.addTickets(2);
+                            this.showToast("+2 Tickets (Playtime)");
+                        }
+                        this.updateTimeUI();
+                    }
+                }, 1000);
+            },
+
+            loadUserData: async function() {
+                const docRef = db.collection('users').doc(currentUser.uid);
+                const docSnap = await docRef.get();
+                if (docSnap.exists) {
+                    const data = docSnap.data();
+                    this.state.tickets = data.tickets || 0;
+                    this.state.totalPlaytime = data.playtime || 0;
+                } else {
+                    await docRef.set({ tickets: 100, playtime: 0, joined: [] });
+                    this.state.tickets = 100;
+                }
+                this.updateUI();
+            },
+
+            addTickets: function(amount) {
+                this.state.tickets += amount;
+                this.updateUI();
+                if (currentUser) {
+                    db.collection('users').doc(currentUser.uid).update({
+                        tickets: this.state.tickets,
+                        playtime: this.state.totalPlaytime
+                    });
+                } else {
+                    localStorage.setItem('tickets', this.state.tickets);
+                }
+            },
+
+            updateUI: function() {
+                document.getElementById('ticket-display').innerText = this.state.tickets;
+            },
+
+            updateTimeUI: function() {
+                const mins = Math.floor(this.state.totalPlaytime / 60).toString().padStart(2, '0');
+                const secs = (this.state.totalPlaytime % 60).toString().padStart(2, '0');
+                document.getElementById('playtime-display').innerText = mins + ":" + secs;
+            },
+
+            showToast: function(msg) {
+                const t = document.getElementById('toast');
+                t.innerText = msg;
+                t.style.opacity = 1;
+                setTimeout(() => t.style.opacity = 0, 3000);
+            },
+
+            showHome: function() {
+                document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+                document.getElementById('start-screen').classList.add('active');
+                Game.resetToHome();
+            },
+
+            watchRewardedAd: function() {
+                this.showToast("Loading Ad...");
+                Ads.run('reward').then(() => {
+                    this.addTickets(50);
+                    alert("Thanks! +50 Tickets.");
+                }).catch((e) => {
+                    alert("Ad failed or closed early.");
+                });
+            },
+
+            openTournaments: async function() {
+                document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+                document.getElementById('tournament-screen').classList.add('active');
+                const list = document.getElementById('tourney-list-container');
+                list.innerHTML = '<p>Loading live data...</p>';
+
+                if (!db) { list.innerHTML = '<p>DB Error</p>'; return; }
+
+                try {
+                    const snapshot = await db.collection('tournaments').where('active', '==', true).get();
+                    list.innerHTML = '';
+                    if (snapshot.empty) {
+                        list.innerHTML = '<p>No active tournaments.</p>';
+                        return;
+                    }
+
+                    snapshot.forEach(doc => {
+                        const t = doc.data();
+                        const canJoin = this.state.tickets >= t.entryFee;
+                        const isFull = t.currentPlayers >= t.maxPlayers;
+                        const el = document.createElement('div');
+                        el.className = 'tourney-card ' + ((!canJoin || isFull) ? 'locked' : '');
+                        let btnText = isFull ? 'FULL' : (canJoin ? 'JOIN NOW' : 'NEED TICKETS');
+                        let disabled = (!canJoin || isFull) ? 'disabled' : '';
+                        let typeColor = t.type === 'BGMI' ? '#ff9900' : '#00b8ff';
+
+                        el.innerHTML = 
+                            '<h3>' + t.name + ' <span style="float:right; font-size:12px; color:' + typeColor + '">' + t.type + '</span></h3>' +
+                            '<div class="tourney-meta">' +
+                                '<span>Mode: ' + t.mode + '</span>' +
+                                '<span>Players: ' + t.currentPlayers + '/' + t.maxPlayers + '</span>' +
+                            '</div>' +
+                            '<div class="tourney-meta">' +
+                                '<span>Entry: ' + t.entryFee + ' 🎫</span>' +
+                            '</div>' +
+                            '<button class="tourney-btn" ' +
+                                'onclick="App.prepJoin(\'' + doc.id + '\', \'' + t.name + '\', ' + t.entryFee + ')" ' +
+                                disabled + '>' +
+                                btnText +
+                            '</button>';
+                        list.appendChild(el);
+                    });
+                } catch (e) {
+                    list.innerHTML = '<p>Error loading tournaments.</p>';
+                }
+            },
+
+            selectedTourney: null,
+
+            prepJoin: function(id, name, cost) {
+                this.selectedTourney = { id, name, cost };
+                document.getElementById('join-tourney-name').innerText = name;
+                document.getElementById('join-cost').innerText = cost;
+                document.getElementById('join-screen').classList.add('active');
+            },
+
+            submitEntry: async function() {
+                const ign = document.getElementById('ign-input').value;
+                const uid = document.getElementById('uid-input').value;
+                if (!ign || !uid) { this.showToast("Fill all fields"); return; }
+                if (this.state.tickets < this.selectedTourney.cost) { this.showToast("Not enough tickets"); return; }
+
+                try {
+                    await db.runTransaction(async (transaction) => {
+                        const tourneyRef = db.collection('tournaments').doc(this.selectedTourney.id);
+                        const tDoc = await transaction.get(tourneyRef);
+                        if (!tDoc.exists) throw "Tournament gone!";
+                        const tData = tDoc.data();
+                        if (tData.currentPlayers >= tData.maxPlayers) throw "Full!";
+
+                        const userRef = db.collection('users').doc(currentUser.uid);
+                        transaction.update(userRef, { tickets: firebase.firestore.FieldValue.increment(-this.selectedTourney.cost) });
+                        
+                        const entryRef = db.collection('entries').doc();
+                        transaction.set(entryRef, {
+                            userId: currentUser.uid,
+                            tournId: this.selectedTourney.id,
+                            ign: ign, gameUid: uid,
+                            timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                        });
+
+                        transaction.update(tourneyRef, { currentPlayers: firebase.firestore.FieldValue.increment(1) });
+                    });
+
+                    this.state.tickets -= this.selectedTourney.cost;
+                    this.updateUI();
+                    document.getElementById('join-screen').classList.remove('active');
+                    this.showToast("Joined Successfully!");
+                    Ads.run('interstitial'); // Show Safe Ad
+
+                } catch (e) {
+                    this.showToast("Join Failed: " + e);
+                }
+            }
+        };
+
+        // ==========================================
+        // 4. GAME ENGINE
+        // ==========================================
+        const Game = {
+            scene: null, camera: null, renderer: null, ball: null, tower: n
