@@ -1,273 +1,327 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Admin Panel - Stack Tournament</title>
-    
-    <!-- Bootstrap CSS for styling -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
-    
-    <!-- Firebase SDKs -->
-    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
-
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Panel | Tournament System</title>
     <style>
-        body { background-color: #f8f9fa; }
-        .card { box-shadow: 0 4px 6px rgba(0,0,0,0.1); border: none; margin-bottom: 20px; }
-        .header { background: #212529; color: white; padding: 15px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; }
-        .status-active { color: #198754; font-weight: bold; }
-        .status-ended { color: #dc3545; font-weight: bold; }
-        #login-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #212529; z-index: 9999; display: flex; justify-content: center; align-items: center; flex-direction: column; color: white; }
+        :root { --admin-bg: #1e1e2d; --admin-sidebar: #151521; --accent: #3699ff; --text: #fff; }
+        * { box-sizing: border-box; font-family: sans-serif; }
+        body { margin: 0; background: var(--admin-bg); color: var(--text); display: flex; height: 100vh; }
+        
+        /* Auth Overlay */
+        #auth-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: #000; z-index: 999; display: flex; align-items: center; justify-content: center;
+        }
+        
+        /* Sidebar */
+        .sidebar { width: 250px; background: var(--admin-sidebar); padding: 20px; display: flex; flex-direction: column; }
+        .sidebar h2 { color: var(--accent); margin-bottom: 40px; }
+        .nav-item { padding: 15px; cursor: pointer; color: #a2a3b7; border-radius: 5px; margin-bottom: 5px; }
+        .nav-item:hover, .nav-item.active { background: #2b2b40; color: #fff; }
+
+        /* Content */
+        .main { flex: 1; padding: 30px; overflow-y: auto; }
+        .card { background: #2b2b40; padding: 20px; border-radius: 10px; margin-bottom: 20px; }
+        
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { text-align: left; padding: 12px; border-bottom: 1px solid #3f3f56; }
+        th { color: #6c7293; }
+        
+        input, select {
+            background: #1e1e2d; border: 1px solid #3f3f56; color: #fff; padding: 10px; border-radius: 5px; width: 100%; margin-bottom: 10px;
+        }
+        button {
+            padding: 10px 20px; background: var(--accent); border: none; color: #fff; border-radius: 5px; cursor: pointer;
+        }
+        button.danger { background: #f64e60; }
+        button.success { background: #1bc5bd; }
+        
+        .modal {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.5); align-items: center; justify-content: center;
+        }
+        .modal-content { background: var(--admin-sidebar); padding: 30px; width: 500px; border-radius: 10px; }
+
+        .hidden { display: none; }
     </style>
 </head>
 <body>
 
-    <!-- LOGIN SCREEN -->
-    <div id="login-overlay">
-        <h3>Admin Access</h3>
-        <input type="password" id="admin-pass" class="form-control" style="width: 250px; margin: 10px;" placeholder="Enter Password" />
-        <button onclick="checkPass()" class="btn btn-primary">Login</button>
-    </div>
-
-    <!-- MAIN DASHBOARD -->
-    <div id="dashboard" style="display:none;">
-        <div class="header">
-            <h3>🎮 Tournament Manager</h3>
-            <span class="badge bg-warning text-dark">Admin Mode</span>
-        </div>
-
-        <div class="container">
-            <!-- CREATE FORM -->
-            <div class="card">
-                <div class="card-header bg-primary text-white">Create New Tournament</div>
-                <div class="card-body">
-                    <div class="row g-3">
-                        <div class="col-md-4">
-                            <label class="form-label">Tournament Name</label>
-                            <input type="text" id="t-name" class="form-control" placeholder="e.g. BGMI Sunday Special" />
-                        </div>
-                        <div class="col-md-2">
-                            <label class="form-label">Game</label>
-                            <select id="t-type" class="form-select">
-                                <option value="BGMI">BGMI</option>
-                                <option value="FreeFire">Free Fire</option>
-                            </select>
-                        </div>
-                        <div class="col-md-2">
-                            <label class="form-label">Mode</label>
-                            <input type="text" id="t-mode" class="form-control" placeholder="Solo/Squad" value="Solo" />
-                        </div>
-                        <div class="col-md-2">
-                            <label class="form-label">Max Players</label>
-                            <input type="number" id="t-max" class="form-control" value="100" />
-                        </div>
-                        <div class="col-md-2">
-                            <label class="form-label">Fee (Tickets)</label>
-                            <input type="number" id="t-fee" class="form-control" value="200" />
-                        </div>
-                        <div class="col-12">
-                            <button onclick="createTournament()" class="btn btn-success w-100">🚀 Launch Tournament</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- ACTIVE TOURNAMENTS -->
-            <div class="card">
-                <div class="card-header bg-dark text-white">Active Tournaments</div>
-                <div class="card-body p-0">
-                    <div class="table-responsive">
-                        <table class="table table-hover mb-0">
-                            <thead class="table-light">
-                                <tr>
-                                    <th>Name</th>
-                                    <th>Game</th>
-                                    <th>Players</th>
-                                    <th>Fee</th>
-                                    <th>Status</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody id="tourney-table">
-                                <!-- Data injected here -->
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
+    <!-- AUTH SCREEN -->
+    <div id="auth-overlay">
+        <div style="text-align:center">
+            <h2>ADMIN ACCESS</h2>
+            <input type="password" id="admin-pin" placeholder="Enter PIN (1234)" style="text-align:center">
+            <button onclick="checkAuth()">LOGIN</button>
         </div>
     </div>
 
-    <!-- PLAYERS MODAL -->
-    <div class="modal fade" id="playersModal" tabindex="-1">
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Registered Players</h5>
-                    <button type="button" class="btn-close" onclick="closeModal()"></button>
-                </div>
-                <div class="modal-body">
-                    <textarea id="copy-area" class="form-control mb-2" rows="5" readonly="readonly"></textarea>
-                    <button onclick="copyToClipboard()" class="btn btn-secondary btn-sm">Copy All</button>
-                    <hr />
-                    <ul id="player-list-ul" class="list-group"></ul>
-                </div>
-            </div>
-        </div>
+    <!-- SIDEBAR -->
+    <div class="sidebar">
+        <h2>ADMIN CONTROL</h2>
+        <div class="nav-item active" onclick="showTab('tournaments')">Tournaments</div>
+        <div class="nav-item" onclick="showTab('users')">Banned Users</div>
+        <div class="nav-item" onclick="showTab('settings')">Settings</div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script>
-    /*<![CDATA[*/
-        // ==========================================
-        // 1. CONFIGURATION (SAME AS CLIENT)
-        // ==========================================
-        const firebaseConfig = {
-          apiKey: "AIzaSyDCmXCdvLV8--2ZXYmCpAgLR3cogj0cGG8",
-          authDomain: "freegm-4601f.firebaseapp.com",
-          databaseURL: "https://freegm-4601f-default-rtdb.asia-southeast1.firebasedatabase.app",
-          projectId: "freegm-4601f",
-          storageBucket: "freegm-4601f.firebasestorage.app",
-          messagingSenderId: "30234171811",
-          appId: "1:30234171811:web:70a6c3cfd365a874cfa216"
-        };
-
-        // Init Firebase
-        firebase.initializeApp(firebaseConfig);
-        const db = firebase.firestore();
-
-        // ==========================================
-        // 2. AUTHENTICATION (SIMPLE PASSCODE)
-        // ==========================================
-        function checkPass() {
-            const p = document.getElementById('admin-pass').value;
-            // CHANGE THIS PASSWORD
-            if(p === "admin123") {
-                document.getElementById('login-overlay').style.display = 'none';
-                document.getElementById('dashboard').style.display = 'block';
-                loadTournaments();
-            } else {
-                alert("Wrong Password!");
-            }
-        }
-
-        // ==========================================
-        // 3. ADMIN FUNCTIONS
-        // ==========================================
+    <!-- MAIN CONTENT -->
+    <div class="main">
         
-        // Create
-        function createTournament() {
-            const name = document.getElementById('t-name').value;
-            const type = document.getElementById('t-type').value;
-            const mode = document.getElementById('t-mode').value;
-            const max = parseInt(document.getElementById('t-max').value);
-            const fee = parseInt(document.getElementById('t-fee').value);
+        <!-- TOURNAMENT TAB -->
+        <div id="tournaments" class="tab-content">
+            <div style="display:flex; justify-content:space-between; align-items:center">
+                <h1>Manage Tournaments</h1>
+                <button class="success" onclick="openModal('create')">+ New Tournament</button>
+            </div>
 
-            if(!name) return alert("Name is required");
+            <div class="card">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Game</th>
+                            <th>Joined</th>
+                            <th>Status</th>
+                            <th>Room ID</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="t-table-body"></tbody>
+                </table>
+            </div>
+        </div>
 
-            db.collection('tournaments').add({
-                name: name,
-                type: type,
-                mode: mode,
-                maxPlayers: max,
-                currentPlayers: 0,
-                entryFee: fee,
-                active: true,
-                createdAt: firebase.firestore.FieldValue.serverTimestamp()
-            }).then(() => {
-                alert("Tournament Created Successfully!");
-                document.getElementById('t-name').value = '';
-            }).catch(e => alert("Error: " + e));
-        }
+        <!-- USERS TAB (Simple Ban System) -->
+        <div id="users" class="tab-content hidden">
+            <h1>Banned Users</h1>
+            <div class="card">
+                <div style="display:flex; gap:10px;">
+                    <input type="text" id="ban-username" placeholder="Username to Ban">
+                    <button class="danger" onclick="banUser()">BAN</button>
+                </div>
+                <div id="banned-list" style="margin-top:20px;"></div>
+            </div>
+        </div>
 
-        // Read (Real-time)
-        function loadTournaments() {
-            db.collection('tournaments').orderBy('createdAt', 'desc').onSnapshot(snapshot => {
-                const tbody = document.getElementById('tourney-table');
-                tbody.innerHTML = '';
-                
-                snapshot.forEach(doc => {
-                    const t = doc.data();
-                    const tr = document.createElement('tr');
-                    
-                    const statusClass = t.active ? 'status-active' : 'status-ended';
-                    const statusText = t.active ? 'ACTIVE' : 'ENDED';
-                    
-                    // Button logic
-                    const actionBtn = t.active 
-                        ? `<button class="btn btn-danger btn-sm" onclick="toggleStatus('${doc.id}', false)">End</button>`
-                        : `<button class="btn btn-success btn-sm" onclick="toggleStatus('${doc.id}', true)">Activate</button>`;
+        <!-- SETTINGS TAB -->
+        <div id="settings" class="tab-content hidden">
+            <h1>Settings</h1>
+            <div class="card">
+                <h3>Ad Control</h3>
+                <label><input type="checkbox" id="ads-toggle"> Show Global Ads</label>
+                <br><br>
+                <button class="danger" onclick="localStorage.clear(); location.reload()">RESET ALL DATA</button>
+            </div>
+        </div>
 
-                    tr.innerHTML = `
-                        <td>${t.name}</td>
-                        <td>${t.type}</td>
-                        <td><span class="badge bg-info text-dark">${t.currentPlayers} / ${t.maxPlayers}</span></td>
-                        <td>${t.entryFee}</td>
-                        <td class="${statusClass}">${statusText}</td>
-                        <td>
-                            ${actionBtn}
-                            <button class="btn btn-primary btn-sm" onclick="viewPlayers('${doc.id}')">View Players</button>
-                        </td>
-                    `;
-                    tbody.appendChild(tr);
-                });
-            });
-        }
+    </div>
 
-        // Update Status
-        function toggleStatus(id, status) {
-            if(confirm(status ? "Re-activate this tournament?" : "End this tournament? Users won't be able to join.")) {
-                db.collection('tournaments').doc(id).update({ active: status });
+    <!-- CREATE/EDIT MODAL -->
+    <div id="tModal" class="modal">
+        <div class="modal-content">
+            <h3 id="modal-title">Create Tournament</h3>
+            <input type="text" id="t-name" placeholder="Tournament Name">
+            <select id="t-game">
+                <option>BGMI</option>
+                <option>Free Fire</option>
+            </select>
+            <input type="date" id="t-date">
+            <input type="time" id="t-time">
+            <input type="number" id="t-slots" placeholder="Total Slots (e.g. 100)">
+            <input type="number" id="t-cost" placeholder="Ticket Cost">
+            <select id="t-status">
+                <option>Open</option>
+                <option>Closed</option>
+                <option>Live</option>
+            </select>
+            
+            <h4 style="margin-top:20px; color:#666">Room Details</h4>
+            <input type="text" id="t-roomid" placeholder="Room ID (Leave empty if not ready)">
+            <input type="text" id="t-pass" placeholder="Room Password">
+
+            <button class="success" onclick="saveTournament()">SAVE</button>
+            <button class="danger" onclick="closeModal()">CANCEL</button>
+        </div>
+    </div>
+
+    <!-- PARTICIPANTS MODAL -->
+    <div id="pModal" class="modal">
+        <div class="modal-content">
+            <h3>Participants</h3>
+            <div id="p-list" style="max-height: 300px; overflow-y:auto; margin-bottom:20px;"></div>
+            <button class="danger" onclick="document.getElementById('pModal').style.display='none'">CLOSE</button>
+        </div>
+    </div>
+
+    <script>
+        const LS_TOURNAMENTS = 'tournaments';
+        const LS_BANNED = 'bannedUsers';
+        let editIndex = -1;
+
+        // --- AUTH ---
+        function checkAuth() {
+            const pin = document.getElementById('admin-pin').value;
+            if (pin === '1234') {
+                document.getElementById('auth-overlay').style.display = 'none';
+                loadTournaments();
+                loadBanned();
+            } else {
+                alert('Wrong PIN');
             }
         }
 
-        // View Players
-        let playersModal;
-        function viewPlayers(tournId) {
-            if(!playersModal) playersModal = new bootstrap.Modal(document.getElementById('playersModal'));
-            
-            const ul = document.getElementById('player-list-ul');
-            const textArea = document.getElementById('copy-area');
-            ul.innerHTML = 'Loading...';
-            textArea.value = '';
+        // --- TABS ---
+        function showTab(id) {
+            document.querySelectorAll('.tab-content').forEach(d => d.classList.add('hidden'));
+            document.getElementById(id).classList.remove('hidden');
+            document.querySelectorAll('.nav-item').forEach(d => d.classList.remove('active'));
+            event.target.classList.add('active');
+        }
 
-            db.collection('entries').where('tournId', '==', tournId).get().then(snap => {
-                ul.innerHTML = '';
-                let textData = "IGN | UID\n----------\n";
-                
-                if(snap.empty) {
-                    ul.innerHTML = '<li class="list-group-item">No players joined yet.</li>';
-                } else {
-                    snap.forEach(doc => {
-                        const d = doc.data();
-                        const li = document.createElement('li');
-                        li.className = 'list-group-item d-flex justify-content-between align-items-center';
-                        li.innerHTML = `
-                            <span><strong>${d.ign}</strong> (${d.gameUid})</span>
-                            <span class="badge bg-secondary">UID: ${d.userId.substr(0,5)}...</span>
-                        `;
-                        ul.appendChild(li);
-                        textData += `${d.ign} | ${d.gameUid}\n`;
-                    });
-                }
-                textArea.value = textData;
-                playersModal.show();
+        // --- TOURNAMENT CRUD ---
+        function loadTournaments() {
+            const list = JSON.parse(localStorage.getItem(LS_TOURNAMENTS)) || [];
+            const tbody = document.getElementById('t-table-body');
+            tbody.innerHTML = '';
+            
+            list.forEach((t, i) => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${t.name}</td>
+                    <td>${t.game}</td>
+                    <td>${t.joined}/${t.slots} <button style="padding:2px 5px; font-size:0.7rem" onclick="viewParticipants(${i})">View</button></td>
+                    <td>${t.status}</td>
+                    <td>${t.roomId || '-'}</td>
+                    <td>
+                        <button onclick="editTournament(${i})" style="background:#ffa800">Edit</button>
+                        <button class="danger" onclick="deleteTournament(${i})">Del</button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
             });
+        }
+
+        function openModal(mode) {
+            document.getElementById('tModal').style.display = 'flex';
+            if (mode === 'create') {
+                editIndex = -1;
+                document.getElementById('modal-title').innerText = "Create Tournament";
+                // Clear fields
+                document.getElementById('t-name').value = '';
+                document.getElementById('t-slots').value = '100';
+                document.getElementById('t-cost').value = '1';
+                document.getElementById('t-roomid').value = '';
+                document.getElementById('t-pass').value = '';
+            }
+        }
+
+        function editTournament(index) {
+            editIndex = index;
+            const list = JSON.parse(localStorage.getItem(LS_TOURNAMENTS));
+            const t = list[index];
+            document.getElementById('tModal').style.display = 'flex';
+            document.getElementById('modal-title').innerText = "Edit Tournament";
+            
+            document.getElementById('t-name').value = t.name;
+            document.getElementById('t-game').value = t.game;
+            document.getElementById('t-date').value = t.date;
+            document.getElementById('t-time').value = t.time;
+            document.getElementById('t-slots').value = t.slots;
+            document.getElementById('t-cost').value = t.cost;
+            document.getElementById('t-status').value = t.status;
+            document.getElementById('t-roomid').value = t.roomId || '';
+            document.getElementById('t-pass').value = t.roomPass || '';
+        }
+
+        function saveTournament() {
+            const list = JSON.parse(localStorage.getItem(LS_TOURNAMENTS)) || [];
+            const data = {
+                id: editIndex === -1 ? Date.now() : list[editIndex].id,
+                name: document.getElementById('t-name').value,
+                game: document.getElementById('t-game').value,
+                date: document.getElementById('t-date').value,
+                time: document.getElementById('t-time').value,
+                slots: parseInt(document.getElementById('t-slots').value),
+                cost: parseInt(document.getElementById('t-cost').value),
+                status: document.getElementById('t-status').value,
+                roomId: document.getElementById('t-roomid').value,
+                roomPass: document.getElementById('t-pass').value,
+                joined: editIndex === -1 ? 0 : list[editIndex].joined,
+                participants: editIndex === -1 ? [] : list[editIndex].participants
+            };
+
+            if (editIndex === -1) {
+                list.push(data);
+            } else {
+                list[editIndex] = data;
+            }
+
+            localStorage.setItem(LS_TOURNAMENTS, JSON.stringify(list));
+            closeModal();
+            loadTournaments();
+        }
+
+        function deleteTournament(index) {
+            if(confirm('Delete this tournament?')) {
+                const list = JSON.parse(localStorage.getItem(LS_TOURNAMENTS));
+                list.splice(index, 1);
+                localStorage.setItem(LS_TOURNAMENTS, JSON.stringify(list));
+                loadTournaments();
+            }
         }
 
         function closeModal() {
-            if(playersModal) playersModal.hide();
+            document.getElementById('tModal').style.display = 'none';
         }
 
-        function copyToClipboard() {
-            const copyText = document.getElementById("copy-area");
-            copyText.select();
-            document.execCommand("copy");
-            alert("Player list copied!");
+        function viewParticipants(index) {
+            const list = JSON.parse(localStorage.getItem(LS_TOURNAMENTS));
+            const parts = list[index].participants || [];
+            const pDiv = document.getElementById('p-list');
+            pDiv.innerHTML = '';
+            
+            if (parts.length === 0) pDiv.innerHTML = 'No participants yet.';
+
+            parts.forEach(p => {
+                pDiv.innerHTML += `<div style="padding:5px; border-bottom:1px solid #444">
+                    <b>${p.username}</b> - ID: ${p.gameId} (${p.mode})
+                </div>`;
+            });
+            document.getElementById('pModal').style.display = 'flex';
         }
-    /*]]>*/
+
+        // --- BAN SYSTEM ---
+        function loadBanned() {
+            const list = JSON.parse(localStorage.getItem(LS_BANNED)) || [];
+            const div = document.getElementById('banned-list');
+            div.innerHTML = '';
+            list.forEach((user, i) => {
+                div.innerHTML += `<div style="background:#000; padding:10px; margin:5px 0; display:flex; justify-content:space-between">
+                    ${user} <button class="success" onclick="unbanUser(${i})">Unban</button>
+                </div>`;
+            });
+        }
+
+        function banUser() {
+            const user = document.getElementById('ban-username').value;
+            if(!user) return;
+            const list = JSON.parse(localStorage.getItem(LS_BANNED)) || [];
+            list.push(user);
+            localStorage.setItem(LS_BANNED, JSON.stringify(list));
+            document.getElementById('ban-username').value = '';
+            loadBanned();
+            alert('User banned locally. Note: In a backend-less system, this blocks them only if they use this browser instance or if you simulate it.');
+        }
+
+        function unbanUser(index) {
+            const list = JSON.parse(localStorage.getItem(LS_BANNED));
+            list.splice(index, 1);
+            localStorage.setItem(LS_BANNED, JSON.stringify(list));
+            loadBanned();
+        }
+
     </script>
 </body>
-</html>
+    </html>
